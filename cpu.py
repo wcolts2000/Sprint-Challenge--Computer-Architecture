@@ -9,16 +9,25 @@ PRN = 0b01000111
 MUL = 0b10100010
 PSH = 0b01000101
 POP = 0b01000110
+CMP = 0b10100111
+JEQ = 0b01010101
+JMP = 0b01010100
+JNE = 0b01010110 
 # reserved registers
 IM = 5
 IS = 6
 SP = 7
+# flags
+EQ = 0b00000001
+GT = 0b00000010
+LT = 0b00000100
 
 class CPU:
     """Main CPU class."""
     def __init__(self):
         """Construct a new CPU."""
         self.halted = False
+        self.sets_pc = False
         self.ram = [0] * 256
         self.reg = [0] * 8
         self.reg[SP] = 0xf4
@@ -33,6 +42,10 @@ class CPU:
             MUL: self.mul,
             PSH: self.psh,
             POP: self.pop,
+            CMP: self.cmp,
+            JMP: self.jmp,
+            JEQ: self.jeq,
+            JNE: self.jne,
         }
     def load(self):
         """Load a program into memory."""
@@ -58,6 +71,14 @@ class CPU:
             self.reg[reg_a] += self.reg[reg_b]
         elif op == "MUL":
             self.reg[reg_a] *= self.reg[reg_b]
+        elif op == "CMP":
+            self.fl = 0
+            if self.reg[reg_a] == self.reg[reg_b]:
+                self.fl = EQ
+            elif self.reg[reg_a] < self.reg[reg_b]:
+                self.fl = LT
+            elif self.reg[reg_a] > self.reg[reg_b]:
+                self.fl = GT
         else:
             raise Exception("Unsupported ALU operation")
     
@@ -105,6 +126,20 @@ class CPU:
     def psh(self, operand_a, operand_b):
         self.reg[SP] -= 1
         self.ram_write(self.reg[operand_a], self.reg[7])
+    def cmp(self, operand_a, operand_b):
+        self.alu("CMP", operand_a, operand_b)
+    def jmp(self, operand_a, operand_b):
+        self.pc = self.reg[operand_a]
+    def jeq(self, operand_a, operand_b):
+        if self.fl & EQ:
+            self.pc = self.reg[operand_a]
+        else:
+            self.sets_pc = False
+    def jne(self, operand_a, operand_b):
+        if not self.fl & EQ:
+            self.pc = self.reg[operand_a]
+        else:
+            self.sets_pc = False
         
     def pop(self, operand_a, operand_b):
         num = self.ram_read(self.reg[7])
@@ -120,7 +155,8 @@ class CPU:
             operand_b = self.ram_read(self.pc + 2)
             # inc_pc = int(str(IR)[:2], 2) + 1
             inc_pc = ((IR >> 6) & 0b11) + 1
-            sets_pc = ((IR >> 4) & 0b1) == 1
+            self.sets_pc = ((IR >> 4) & 0b1) == 1
+            # self.trace()
 
             if IR in self.bt:
                 self.bt[IR](operand_a, operand_b)
@@ -128,5 +164,5 @@ class CPU:
                 print(f"ERROR: operation {IR} unknown")
                 sys.exit(1)
 
-            if not sets_pc:
+            if not self.sets_pc:
                 self.pc += inc_pc
